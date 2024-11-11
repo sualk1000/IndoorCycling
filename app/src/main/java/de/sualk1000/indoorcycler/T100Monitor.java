@@ -23,16 +23,19 @@ import android.util.Log;
 import androidx.core.content.ContextCompat;
 
 import java.util.List;
-        import java.util.UUID;
+import java.util.UUID;
 
 
-public class HeartRateMonitor {
+public class T100Monitor {
 
     private final IndoorCyclingService indoorCyclingService;
     //private  SingBroadcastReceiver mReceiver;
     public static final int REQUEST_ACCESS_COARSE_LOCATION = 1;
     public static final int REQUEST_ENABLE_BLUETOOTH = 11;
     List<BluetoothGattService> services;
+    public final static UUID UUID_CYCLING_POWER_MEASUREMENT =
+            UUID.fromString("00002a63-0000-1000-8000-00805f9b34fb");
+    public Integer cyclingPower = 0;
 
     private BluetoothAdapter bluetoothAdapter;
     //private String bluetoothDeviceAddress;
@@ -45,9 +48,9 @@ public class HeartRateMonitor {
     private static final int STATE_CONNECTING = 1;
     private static final int STATE_CONNECTED = 2;
 
-    public HeartRateMonitor(IndoorCyclingService indoorCyclingService)
+    public T100Monitor(IndoorCyclingService indoorCyclingService)
     {
-       // this.bluetoothManager = bluetoothManager;
+        // this.bluetoothManager = bluetoothManager;
         this.indoorCyclingService = indoorCyclingService;
         BluetoothManager bluetoothManager = (BluetoothManager)indoorCyclingService.getSystemService(Context.BLUETOOTH_SERVICE);
         bluetoothAdapter = bluetoothManager.getAdapter();
@@ -55,13 +58,10 @@ public class HeartRateMonitor {
     }
 
 
-    private final static String TAG = HeartRateMonitor.class.getSimpleName();
+    private final static String TAG = T100Monitor.class.getSimpleName();
 
     // Bluetooth
 
-
-    public final static UUID UUID_HEART_RATE_MEASUREMENT =
-            UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
 
 
     /**
@@ -74,6 +74,8 @@ public class HeartRateMonitor {
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 connectionState = STATE_CONNECTED;
+                Log.d(TAG, "onConnectionStateChange. Connected to GATT server.");
+                // Attempts to discover services after successful connection.
                 Log.d(TAG, "Attempting to start service discovery:" + gatt.discoverServices());
 
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
@@ -93,19 +95,19 @@ public class HeartRateMonitor {
                 for(BluetoothGattService myservice:services)
                 {
                     Log.i(TAG, "onServicesDiscovered service: " + myservice.toString());
+                    BluetoothGattCharacteristic cyclingPowerCharacteristic = myservice.getCharacteristic(UUID_CYCLING_POWER_MEASUREMENT);
 
-                    BluetoothGattCharacteristic heartRateCharacteristic = myservice.getCharacteristic(UUID_HEART_RATE_MEASUREMENT);
+                    if(cyclingPowerCharacteristic != null) {
+                        Log.i(TAG, "CYCLING_POWER_MEASUREMENT found");
+                        setCharacteristicNotification(cyclingPowerCharacteristic, true);
 
-                    if(heartRateCharacteristic != null) {
-                        setCharacteristicNotification(heartRateCharacteristic, true);
                         chararcteristicFound = true;
-                        Log.i(TAG, "HEART_RATE_MEASUREMENT found");
                     }
                 }
 
                 if(!chararcteristicFound)
                 {
-                    HeartRateMonitor.this.indoorCyclingService.sendTextMessage("Heartrate Not found on BLE device");
+                    T100Monitor.this.indoorCyclingService.sendTextMessage("Bike Not found on BLE device");
 
                 }
 
@@ -115,50 +117,40 @@ public class HeartRateMonitor {
         }
 
         @Override
-        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+        public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic,
+                                         byte[] value, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "onCharacteristicRead() called");
+                //Log.d(TAG, "onCharacteristicRead() called");
                 broadcastUpdate( characteristic);
             }
         }
 
+
         @Override
-        public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            //Log.d(TAG, "onCharacteristicChanged() called. Heart rate value changed");
+        public void onCharacteristicChanged (BluetoothGatt gatt,
+                                             BluetoothGattCharacteristic characteristic,
+                                             byte[] value)
+        {
+            //Log.d(TAG, "onCharacteristicChanged() called. value changed");
             broadcastUpdate( characteristic);
         }
     };
-    public Integer heartRate = 0;
-
 
 
     private void broadcastUpdate(final BluetoothGattCharacteristic characteristic) {
 
-        // This is special handling for the Heart Rate Measurement profile.  Data parsing is
-        // carried out as per profile specifications:
-        // http://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.heart_rate_measurement.xml
-        if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
-            int flag = characteristic.getProperties();
-            int format = -1;
-            if ((flag & 0x01) != 0) {
-                format = BluetoothGattCharacteristic.FORMAT_UINT16;
-                //Log.d(TAG, "Heart rate format UINT16.");
-            } else {
-                format = BluetoothGattCharacteristic.FORMAT_UINT8;
-                //Log.d(TAG, "Heart rate format UINT8.");
-            }
-            this.heartRate = characteristic.getIntValue(format, 1);
-            //Log.v(TAG, String.format("Received heart rate: %d", heartRate));
+        if (UUID_CYCLING_POWER_MEASUREMENT.equals(characteristic.getUuid())) {
+            this.cyclingPower = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 2) ;
+            //Log.v(TAG, String.format("Received cyclingPower: %d W", cyclingPower));
+            indoorCyclingService.sendPower( cyclingPower);
 
-            indoorCyclingService.sendHeartRate(heartRate);
-            // We send the heartRate value to our Server throughout a HTTP post request
         }
     }
 
 
     @SuppressLint("MissingPermission")
     public boolean start(final BluetoothDevice device) {
-        Log.d(TAG, "start GATT");
+        Log.d(TAG, "GATT client-server connection. Starting connection, connect() called");
 
         bluetoothGatt = device.connectGatt(indoorCyclingService, false, bluetoothGattCallback);
         Log.d(TAG, "Trying to create a new connection.");
@@ -169,7 +161,6 @@ public class HeartRateMonitor {
 
     @SuppressLint("MissingPermission")
     public void disconnect() {
-        Log.w(TAG, "disconnect");
         if (bluetoothGatt == null) {
             Log.w(TAG, "BluetoothAdapter not initialized");
             return;
@@ -212,15 +203,10 @@ public class HeartRateMonitor {
         }
         bluetoothGatt.setCharacteristicNotification(characteristic, enabled);
 
-        // This is specific to Heart Rate Measurement.
-        // We access the descriptor 'Client Characteristic Configuration' to set the notification flag to 'enabled'
-        // Thereby, HEART_RATE_MEASUREMENT characteristic is able to send notifications, whenever the data underlying changes
-        if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
-            BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
-                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            bluetoothGatt.writeDescriptor(descriptor);
-        }
+        BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
+                UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+        bluetoothGatt.writeDescriptor(descriptor);
     }
 
     /**
@@ -241,38 +227,4 @@ public class HeartRateMonitor {
 
 
 
-    /*
-    private class SingBroadcastReceiver extends BroadcastReceiver {
-
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction(); //may need to chain this to a recognizing function
-            Log.d(TAG,"onReceive " + action);
-            if (BluetoothDevice.ACTION_FOUND.equals(action)){
-                // Get the BluetoothDevice object from the Intent
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                // Add the name and address to an array adapter to show in a Toast
-                String derp = device.getName() + " - " + device.getAddress();
-
-                Log.d(TAG,"Device " + derp);
-                //Toast.makeText(context, derp, Toast.LENGTH_LONG);
-
-                if(device.getName() != null && device.getName().startsWith("Polar H7"))
-                {
-                    stopScan();
-                    connect(device.getAddress());
-                }
-            }
-
-            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
-                //report user
-                Log.d(TAG,"Started");
-             }
-
-            if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-                Log.d(TAG,"Finished");
-                stopScan();
-            }
-
-        }
-    }*/
 }

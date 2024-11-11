@@ -13,12 +13,10 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.os.Bundle;
 import android.app.DialogFragment;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.TextView;
 
-import com.dsi.ant.plugins.antplus.pcc.AntPlusGeocachePcc.ISimpleProgressUpdateReceiver;
 
 /**
  * Displays a modal waiting dialog to wait for a result and optionally show progress reports.
@@ -53,36 +51,19 @@ public class Dialog_ProgressWaiter extends DialogFragment
         return builder.create();
     }
 
-    /**
-     * Returns an update receiver that will show the progress updates on the dialog display.
-     * @return The update receiver.
-     */
-    public ISimpleProgressUpdateReceiver getUpdateReceiver()
-    {
-        return updateReceiver;
-    }
-
-    private ISimpleProgressUpdateReceiver updateReceiver = new ISimpleProgressUpdateReceiver()
-            {
-                @Override
-                public void onNewSimpleProgressUpdate(int workUnitsFinished, int totalUnitsWork)
-                {
-                    Log.e("DBG-WAIT", "Progress update " + workUnitsFinished + "/" + totalUnitsWork);
-                    if(totalUnitsWork > 0)
-                    {
-                        setStatus(actionDescription + ": " + workUnitsFinished + "/" + totalUnitsWork);
-                    }
-                }
-            };
-
     public void setStatus(final String newStatus)
     {
+        this.actionDescription = newStatus;
+        if(getActivity() == null)
+            return;
+
         getActivity().runOnUiThread(new Runnable()
                 {
                     @Override
                     public void run()
                     {
-                        textView_status.setText(newStatus);
+
+                        textView_status.setText(actionDescription );
                     }
                 });
     }

@@ -21,6 +21,7 @@ import com.garmin.fit.DateTime;
 import com.garmin.fit.DeviceInfoMesg;
 import com.garmin.fit.FileEncoder;
 import com.garmin.fit.FileIdMesg;
+import com.garmin.fit.Fit;
 import com.garmin.fit.Manufacturer;
 import com.garmin.fit.Mesg;
 
@@ -28,6 +29,7 @@ import com.garmin.fit.Mesg;
 import java.io.File;
 import java.util.Date;
 import java.util.LinkedList;
+import java.util.Random;
 
 public class Export {
   
@@ -41,21 +43,27 @@ public class Export {
     if(file.exists())
       file.delete();
 
-    FileEncoder encoder = new FileEncoder(file);
+    //FileEncoder encoder = new FileEncoder(file);
+    FileEncoder encoder = new FileEncoder(file, Fit.ProtocolVersion.V2_0);
+
+    Random random = new Random();
+    int serialNumber = random.nextInt();
 
     FileIdMesg fileIdMesg = new FileIdMesg();
     fileIdMesg.setType(com.garmin.fit.File.ACTIVITY);
-    fileIdMesg.setManufacturer(Manufacturer.TANITA);
+    fileIdMesg.setManufacturer(Manufacturer.DEVELOPMENT);
     fileIdMesg.setProduct(1);
-    fileIdMesg.setSerialNumber(1L);
+    fileIdMesg.setSerialNumber((long) serialNumber);
+    fileIdMesg.setTimeCreated(new DateTime(new Date()));
+
     encoder.write(fileIdMesg);
 
     DeviceInfoMesg deviceInfoMesg = new DeviceInfoMesg();
     deviceInfoMesg.setDeviceIndex((short) 1);
-    deviceInfoMesg.setManufacturer(Manufacturer.TANITA);
+    deviceInfoMesg.setManufacturer(Manufacturer.DEVELOPMENT);
     deviceInfoMesg.setProduct(1);
     deviceInfoMesg.setProductName("FIT Cookbook"); // Max 20 Chars
-    deviceInfoMesg.setSerialNumber(1L);
+    deviceInfoMesg.setSerialNumber((long) serialNumber);
     deviceInfoMesg.setSoftwareVersion((float) 1L);
     deviceInfoMesg.setTimestamp(new DateTime(new Date().getTime()));
 

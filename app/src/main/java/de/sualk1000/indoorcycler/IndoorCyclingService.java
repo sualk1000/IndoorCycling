@@ -1,110 +1,118 @@
 package de.sualk1000.indoorcycler;
+import android.annotation.SuppressLint;
 import android.app.Service;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.graphics.Color;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Binder;
 import android.os.IBinder;
 import android.content.Intent;
+import android.provider.Settings;
 import android.util.Log;
 
-import com.dsi.ant.plugins.antplus.pcc.AntPlusBikePowerPcc;
-import com.dsi.ant.plugins.antplus.pcc.AntPlusFitnessEquipmentPcc;
-import com.dsi.ant.plugins.antplus.pcc.MultiDeviceSearch;
-import com.dsi.ant.plugins.antplus.pcc.defines.DeviceState;
-import com.dsi.ant.plugins.antplus.pcc.defines.DeviceType;
-import com.dsi.ant.plugins.antplus.pcc.defines.EventFlag;
-import com.dsi.ant.plugins.antplus.pcc.defines.RequestAccessResult;
-import com.dsi.ant.plugins.antplus.pcc.defines.RequestStatus;
-import com.dsi.ant.plugins.antplus.pccbase.AntPluginPcc;
-import com.dsi.ant.plugins.antplus.pccbase.AntPlusCommonPcc;
-import com.dsi.ant.plugins.antplus.pccbase.PccReleaseHandle;
+
+import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.YAxis;
+import com.github.mikephil.charting.data.Entry;
+import com.github.mikephil.charting.data.LineDataSet;
 
 import java.io.File;
 import java.math.BigDecimal;
-import java.util.EnumSet;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class IndoorCyclingService extends Service{
     private final static String TAG = IndoorCyclingService.class.getSimpleName();
     public boolean serviceStarted = false;
-    private long cumulativeDistance;
+    private long cumulativeDistance = 0;
+    private long lastPowerTimestamp = 0;
     private BikeActivity bikeActivity;
     private HeartRateMonitor heartRateMonitor;
-    private PccReleaseHandle<AntPlusFitnessEquipmentPcc> releaseHandleEquipment;
-    AntPlusFitnessEquipmentPcc fePcc = null;
-
+    private T100Monitor t100Monitor;
+    private BLEScanner bleScanner = null;
     public static final String NOTIFICATION = IndoorCyclingService.class.getName();
     private int fitness = -1;
     private Timer timer = null;
     long startScan = 0;
-    MultiDeviceSearch mSearch;
 
     int mStartMode;
 
     private final IBinder mBinder= new MyBinder();
     boolean mAllowRebind = true;
+    LineDataSet heartRateDataSet;
+    LineDataSet powerDataSet;
 
     @Override
     public void onCreate() {
         Log.i(TAG, "onCreate ");
-
         bikeActivity = new BikeActivity(this);
 
-    }
-    private TimerTask timerTask = new TimerTask() {
+        heartRateDataSet = new LineDataSet(new ArrayList<Entry>(), "HeartRate");
+        heartRateDataSet.setLineWidth(0.5f);
+        heartRateDataSet.setDrawCircles(false);
+        heartRateDataSet.setDrawValues(false);
+        heartRateDataSet.setAxisDependency(YAxis.AxisDependency.RIGHT);
+        heartRateDataSet.setColor(Color.RED);
 
-        @Override
-        public void run() {
+        powerDataSet = new LineDataSet(new ArrayList<Entry>(), "Power");
+        powerDataSet.setLineWidth(0.5f);
+        powerDataSet.setDrawCircles(false);
+        powerDataSet.setDrawValues(false);
+        powerDataSet.setColor(Color.GREEN);
+
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            @SuppressLint("MissingPermission") Location locationGPS = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (locationGPS != null){
+                bikeActivity.lat = (int) (11930465 * locationGPS.getLatitude());
+                bikeActivity.lon = (int) (11930465 * locationGPS.getLongitude());
+                bikeActivity.altitude = locationGPS.getAltitude();
 
 
-            boolean enableScan = false;
-            if(fePcc == null && mSearch == null)
-            {
-                enableScan = true;
             }
-
-            if(heartRateMonitor.isConnected() == false && heartRateMonitor.isDiscovering() == false) {
-                enableScan = true;
-            }
-            if(mSearch != null  && (System.currentTimeMillis() - startScan) > 30 * 1000)
-            {
-                stopScan();
-            }
-
-            if(mSearch != null)
-                enableScan = false;
-
-
-            Log.i(TAG, "timerTask run mSearch=" + mSearch
-                    + " heartRateMonitor=" + heartRateMonitor
-                    + " fePcc=" +fePcc
-                    + " enableScan=" + enableScan);
-
-            IndoorCyclingService.this.sendControlStatus("scan",enableScan);
-
-
 
         }
-    };
+
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "onStartCommand ");
 
         serviceStarted = true;
-        startScan();
-        this.heartRateMonitor = new HeartRateMonitor((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
+        //this.heartRateMonitor = new HeartRateMonitor((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
 
-        if(releaseHandleEquipment == null) {
-            startScan();
+        //this.t100Monitor = new T100Monitor((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
+
+        bleScanner = new BLEScanner((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
+
+
+
+        sendControlStatus("start",false);
+        sendControlStatus("stop",false);
+
+        if(bleScanner.checkSettings() == false)
+        {
+            sendSettings();
+        }else {
+
+            if((this.bleScanner.bleHeartbeatDeviceName == null
+                    || this.bleScanner.bleHeartbeatDeviceName.equals(""))
+                    && (this.bleScanner.bikeDeviceName == null
+                    || this.bleScanner.bikeDeviceName.equals(""))
+            )
+                // No BLE devices set
+                sendControlStatus("start",true);
+            else
+                bleScanner.startScan();
         }
-        //    askSend();
-
-
-        timer = new Timer();
-        timer.scheduleAtFixedRate(timerTask, 1000, 2000);
-
         return mStartMode;
     }
 
@@ -123,43 +131,93 @@ public class IndoorCyclingService extends Service{
     @Override
     public void onRebind(Intent intent) {
         Log.i(TAG, "onRebind ");
+        if(heartRateMonitor != null && heartRateMonitor.isConnected())
+            heartRateMonitor.close();
+
+        heartRateMonitor = null;
+        if(t100Monitor != null && t100Monitor.isConnected())
+            t100Monitor.close();
+
+        t100Monitor = null;
+
 
     }
 
     @Override
     public void onDestroy() {
         Log.i(TAG, "onDestroy ");
-        if (releaseHandleEquipment != null) {
-            releaseHandleEquipment.close();
-            releaseHandleEquipment = null;
-        }
 
-        stopScan();
 
     }
 
     public void onStartButton() {
-        stopScan();
+        if(timer != null)
+        {
+            sendTextMessage("Already started.");
+            return;
+        }
         bikeActivity.start();
+
+        timer = new Timer();
+        final TimerTask timerTask = new TimerTask() {
+            float count = 0;
+
+            @Override
+            public void run() {
+
+                count = count + 1f;
+
+                if(IndoorCyclingService.this.bikeActivity.start != null)
+                {
+
+                    long time = (new Date().getTime() - bikeActivity.start.getTime()) / 1000;
+
+                    powerDataSet.getValues().add(new Entry(time, (float) (1f * IndoorCyclingService.this.bikeActivity.power)));
+
+                    heartRateDataSet.getValues().add(new Entry(time, 1f * IndoorCyclingService.this.bikeActivity.heartRate));
+
+                    bikeActivity.addMessage();
+
+                }
+
+
+                sendControlText("time", IndoorCyclingService.this.bikeActivity.getDurationString());
+            }
+        };
+
+        timer.scheduleAtFixedRate(timerTask, 1000, 1000);
+
+        lastPowerTimestamp = System.currentTimeMillis();
+        cumulativeDistance = 0;
+
 
     }
 
     public void onStopButton() {
 
+        if(bikeActivity.isStarted() == false)
+        {
+            sendTextMessage("Not started.");
+            return;
+        }
+        timer.cancel();
+        timer = null;
         bikeActivity.stop();
+
+        cumulativeDistance = 0;
+        powerDataSet.getValues().clear();
+        powerDataSet.notifyDataSetChanged();
+        heartRateDataSet.getValues().clear();
+        heartRateDataSet.notifyDataSetChanged();
+
 
 
 
     }
 
     public void onScanButton() {
-        if(heartRateMonitor.isConnected() == false && heartRateMonitor.isDiscovering() == false)
-            heartRateMonitor.startScan();
-
-        if(mSearch == null )
-        {
-            startScan();
-        }
+        sendControlStatus("scan",false);
+        bleScanner.startScan();
 
     }
 
@@ -173,324 +231,87 @@ public class IndoorCyclingService extends Service{
 
     }
 
+    public void sendStartHearbeat(BluetoothAdapter bluetoothAdapter, BluetoothDevice bleHeartbeatDevice) {
+
+        if(heartRateMonitor == null)
+            heartRateMonitor = new HeartRateMonitor(this);
+        heartRateMonitor.start(bleHeartbeatDevice);
+        updateScanButtonText();
+    }
+
+    public void sendStartBike( BluetoothDevice bikeDevice) {
+        if(t100Monitor == null)
+            t100Monitor = new T100Monitor(this);
+        t100Monitor.start(bikeDevice);
+
+        updateScanButtonText();
+    }
+
+   void updateScanButtonText()
+   {
+       String txt = "Scan";
+       if(heartRateMonitor == null)
+           txt += " 🔴";
+        else
+           txt += " 🟢";
+        if(t100Monitor == null)
+            txt += " 🔴";
+        else
+            txt += " 🟢";
+
+       sendControlText("scan", txt);
+
+       if(heartRateMonitor != null || t100Monitor != null)
+           sendControlStatus("start",true);
+
+
+   }
+
+   int scan_cycle_counter = -1;
+    public void onScanFinished() {
+
+
+        if(scan_cycle_counter > 1 || scan_cycle_counter < 0)
+        {
+            scan_cycle_counter = 0;
+
+            if((this.bleScanner.bleHeartbeatDeviceName != null
+                    && this.bleScanner.bleHeartbeatDeviceName.equals("") == false
+                    && heartRateMonitor == null) || (this.bleScanner.bikeDeviceName != null
+                    && this.bleScanner.bikeDeviceName.equals("") == false
+                    && this.t100Monitor == null)
+            ) {
+                sendControlStatus("scan", true);
+                sendControlStatus("start", true);
+            }
+            return;
+        }
+        scan_cycle_counter ++;
+        if(this.bleScanner.bleHeartbeatDeviceName != null
+                && this.bleScanner.bleHeartbeatDeviceName.equals("") == false
+                && heartRateMonitor == null)
+        {
+            bleScanner.startScan();
+            return;
+        }
+        if(this.bleScanner.bikeDeviceName != null
+                && this.bleScanner.bikeDeviceName.equals("") == false
+                && this.t100Monitor == null)
+        {
+            bleScanner.startScan();
+            return;
+        }
+
+    }
+
+
     public class MyBinder extends Binder {
         IndoorCyclingService getService() {
             return IndoorCyclingService.this;
         }
     }
 
-    void stopScan() {
-        Log.i(TAG, "stopScan ");
-        if (mSearch != null)
-            mSearch.close();
-        mSearch = null;
 
-    }
-    void startScan() {
-        EnumSet<DeviceType> devices = EnumSet.noneOf(DeviceType.class);
-        //devices.add(DeviceType.BIKE_POWER);
-        //devices.add(DeviceType.ENVIRONMENT);
-        //devices.add(DeviceType.HEARTRATE);
-        //devices.add(DeviceType.BIKE_SPDCAD);
-        devices.add(DeviceType.BIKE_CADENCE);
-        devices.add(DeviceType.FITNESS_EQUIPMENT);
-
-
-        mSearch = new MultiDeviceSearch(this, devices, mCallback, mRssiCallback);
-
-        startScan = System.currentTimeMillis();
-    }
-    AntPlusCommonPcc.IRequestFinishedReceiver requestFinishedReceiver = new AntPlusCommonPcc.IRequestFinishedReceiver(){
-        @Override
-        public void onNewRequestFinished(RequestStatus requestStatus) {
-            sendTextMessage("onNewRequestFinished: " + requestStatus.name());
-        }
-    };
-    private MultiDeviceSearch.SearchCallbacks mCallback = new MultiDeviceSearch.SearchCallbacks() {
-        /**
-         * Called when a device is found. Display found devices in connected and
-         * found lists
-         */
-        public void onDeviceFound(final com.dsi.ant.plugins.antplus.pccbase.MultiDeviceSearch.MultiDeviceSearchResult deviceFound) {
-            Log.i(TAG, "onDeviceFound " + deviceFound.getDeviceDisplayName() + " " + deviceFound.getAntDeviceType().name() + " " + deviceFound.getAntDeviceNumber());
-            switch (deviceFound.getAntDeviceType()) {
-                case BIKE_POWER:
-                    // bikePower = deviceFound;
-                    break;
-                case FITNESS_EQUIPMENT:
-                    fitness = deviceFound.getAntDeviceNumber();
-                    releaseHandleEquipment = AntPlusFitnessEquipmentPcc.requestNewOpenAccess(IndoorCyclingService.this,
-                            fitness, 0, mFitnessEquipmentResultReceiver,
-                            mDeviceStateChangeReceiver, mFitnessEquipmentStateReceiver);
-
-                    break;
-                case BIKE_SPD:
-                case BIKE_SPDCAD:
-                case ENVIRONMENT:
-                case HEARTRATE:
-                case BIKE_CADENCE:
-                case UNKNOWN:
-                    break;
-                default:
-                    break;
-            }
-
-
-
-        }
-
-        /**
-         * The search has been stopped unexpectedly
-         */
-        public void onSearchStopped(RequestAccessResult reason) {
-            Log.i(TAG, "onSearchStopped " + reason.name());
-            sendControlText("message", "Search stopped");
-
-
-        }
-
-        @Override
-        public void onSearchStarted(MultiDeviceSearch.RssiSupport supportsRssi) {
-            Log.i(TAG, "onSearchStarted ");
-            sendControlText("message", "Search started");
-
-            if (supportsRssi == MultiDeviceSearch.RssiSupport.UNAVAILABLE) {
-
-                sendTextMessage("Rssi information not available.");
-            } else if (supportsRssi == MultiDeviceSearch.RssiSupport.UNKNOWN_OLDSERVICE) {
-                sendTextMessage("Rssi might be supported. Please upgrade the plugin service.");
-            }
-        }
-    };
-
-    /**
-     * Callback for RSSI data of previously found devices
-     */
-    private MultiDeviceSearch.RssiCallback mRssiCallback = new MultiDeviceSearch.RssiCallback() {
-        /**
-         * Receive an RSSI data update from a specific found device
-         */
-        @Override
-        public void onRssiUpdate(final int resultId, final int rssi) {
-
-            Log.i(TAG, "onRssiUpdate " + resultId + " " + rssi);
-        }
-    };
-
-    void onMyResultReceived(AntPlusCommonPcc result,
-                          RequestAccessResult resultCode, DeviceState initialDeviceState) {
-        Log.i(TAG, "onResultReceived " + resultCode);
-        switch (resultCode) {
-            case SUCCESS:
-                Log.i(TAG, "onResultReceived " + result.getDeviceName() + " " + resultCode);
-                fePcc = (AntPlusFitnessEquipmentPcc) result;
-                subscribeToEvents();
-                stopScan();
-                sendControlStatus("start",true);
-                sendControlStatus("stop",false);
-                break;
-            case CHANNEL_NOT_AVAILABLE:
-
-                sendTextMessage("Channel Not Available");
-
-                break;
-            case ADAPTER_NOT_DETECTED:
-                sendTextMessage("ANT Adapter Not Available. Built-in ANT hardware or external adapter required.");
-
-                break;
-            case BAD_PARAMS:
-                sendTextMessage("Bad request parameters.");
-                break;
-            case OTHER_FAILURE:
-                sendTextMessage("RequestAccess failed. See logcat for details.");
-                break;
-            case DEPENDENCY_NOT_INSTALLED:
-                break;
-            case USER_CANCELLED:
-                break;
-            case UNRECOGNIZED:
-                sendTextMessage("PluginLib Upgrade Required?" + resultCode);
-                break;
-            default:
-                sendTextMessage("Unrecognized result: " + resultCode);
-                break;
-        }
-
-    }
-
-
-    AntPluginPcc.IPluginAccessResultReceiver<AntPlusFitnessEquipmentPcc> mFitnessEquipmentResultReceiver = new AntPluginPcc.IPluginAccessResultReceiver<AntPlusFitnessEquipmentPcc>() {
-        @Override
-        public void onResultReceived(AntPlusFitnessEquipmentPcc result,
-                                     RequestAccessResult resultCode, DeviceState initialDeviceState) {
-
-            onMyResultReceived(result,
-                    resultCode, initialDeviceState);
-        }
-    };
-    AntPluginPcc.IPluginAccessResultReceiver<AntPlusBikePowerPcc> mBikePowerResultReceiver = new AntPluginPcc.IPluginAccessResultReceiver<AntPlusBikePowerPcc>() {
-        @Override
-        public void onResultReceived(AntPlusBikePowerPcc result,
-                                     RequestAccessResult resultCode, DeviceState initialDeviceState) {
-
-            onMyResultReceived(result,
-                    resultCode, initialDeviceState);
-        }
-    };
-
-    AntPluginPcc.IDeviceStateChangeReceiver mDeviceStateChangeReceiver = new AntPluginPcc.IDeviceStateChangeReceiver() {
-        @Override
-        public void onDeviceStateChange(final DeviceState newDeviceState) {
-
-            sendTextMessage("New State " + newDeviceState.toString());
-
-            if(newDeviceState.equals(DeviceState.DEAD))
-            {
-                releaseHandleEquipment = null;
-                fePcc = null;
-                //startScan();
-            }
-        }
-    };
-    AntPlusFitnessEquipmentPcc.IFitnessEquipmentStateReceiver mFitnessEquipmentStateReceiver =
-            new AntPlusFitnessEquipmentPcc.IFitnessEquipmentStateReceiver() {
-                @Override
-                public void onNewFitnessEquipmentState(final long estTimestamp,
-                                                       EnumSet<EventFlag> eventFlags, final AntPlusFitnessEquipmentPcc.EquipmentType equipmentType,
-                                                       final AntPlusFitnessEquipmentPcc.EquipmentState equipmentState) {
-
-                            switch(equipmentType) {
-                                case GENERAL:
-                                case TREADMILL:
-                                case ELLIPTICAL:
-                                case BIKE:
-                            }
-
-                            if(estTimestamp != -1)
-                                return;
-                            /*
-                            switch(equipmentState)
-                            {
-                                case ASLEEP_OFF:
-                                    ((TextView) findViewById(R.id.textView_Speed)).setText("OFF");
-                                    break;
-                                case READY:
-                                    ((TextView) findViewById(R.id.textView_Speed)).setText("READY");
-                                    break;
-                                case IN_USE:
-                                    ((TextView) findViewById(R.id.textView_Speed)).setText("IN USE");
-                                    break;
-                                case FINISHED_PAUSED:
-                                    ((TextView) findViewById(R.id.textView_Speed)).setText("FINISHED/PAUSE");
-                                    break;
-                                case UNRECOGNIZED:
-                                    Toast.makeText(IndoorCyclingService.this,
-                                            "Failed: UNRECOGNIZED. PluginLib Upgrade Required?",
-                                            Toast.LENGTH_SHORT).show();
-                                default:
-                                    ((TextView) findViewById(R.id.textView_Speed)).setText("INVALID: " + equipmentState);
-                            }*/
-                    sendTextMessage("Equipment State = " + equipmentState.name());
-
-
-                }
-            };
-
-
-    private void subscribeToEvents() {
-        fePcc.subscribeGeneralFitnessEquipmentDataEvent(new AntPlusFitnessEquipmentPcc.IGeneralFitnessEquipmentDataReceiver() {
-            @Override
-            public void onNewGeneralFitnessEquipmentData(final long estTimestamp,
-                                                         EnumSet<EventFlag> eventFlags, final BigDecimal elapsedTime,
-                                                         final long cumulativeDistance, final BigDecimal instantaneousSpeed,
-                                                         final boolean virtualInstantaneousSpeed, final int instantaneousHeartRate,
-                                                         final AntPlusFitnessEquipmentPcc.HeartRateDataSource heartRateDataSource) {
-
-                IndoorCyclingService.this.cumulativeDistance = cumulativeDistance;
-
-                        if (instantaneousSpeed.intValue() == -1)
-                            sendControlText("speed", "Invalid");
-                        else {
-                            sendControlText("speed", String.valueOf(instantaneousSpeed.intValue() * 3.6) + " km/h");
-                            IndoorCyclingService.this.bikeActivity.setSpeed(instantaneousSpeed);
-                        }
-                        if (cumulativeDistance != -1)
-                        {
-                            IndoorCyclingService.this.bikeActivity.setDistance(cumulativeDistance);
-                        }
-
-
-
-                        bikeActivity.setHeartRate(heartRateMonitor.heartRate);
-                        bikeActivity.addMessage();
-                        sendControlText("message", IndoorCyclingService.this.bikeActivity.getText());
-
-
-                    }
-        });
-
-        fePcc.subscribeManufacturerIdentificationEvent(new AntPlusCommonPcc.IManufacturerIdentificationReceiver() {
-            @Override
-            public void onNewManufacturerIdentification(final long estTimestamp, final EnumSet<EventFlag> eventFlags, final int hardwareRevision,
-                                                        final int manufacturerID, final int modelNumber) {
-            }
-        });
-
-        fePcc.getTrainerMethods().subscribeCalculatedTrainerPowerEvent(new AntPlusFitnessEquipmentPcc.ICalculatedTrainerPowerReceiver() {
-            @Override
-            public void onNewCalculatedTrainerPower(final long estTimestamp, EnumSet<EventFlag> eventFlags,
-                                                    final AntPlusFitnessEquipmentPcc.TrainerDataSource dataSource, final BigDecimal calculatedPower) {
-
-                        if (calculatedPower.intValue() == -1)
-                            sendControlText("power", "Invalid");
-
-                        else {
-                            sendControlText("power", "" + calculatedPower.intValue() + " W");
-                            IndoorCyclingService.this.bikeActivity.setPower(calculatedPower);
-
-                        }
-                        IndoorCyclingService.this.bikeActivity.addMessage();
-
-            }
-
-            ;
-
-        });
-        /*
-        fePcc.subscribeCapabilitiesEvent(new AntPlusFitnessEquipmentPcc.ICapabilitiesReceiver()
-        {
-
-            @Override
-            public void onNewCapabilities(final long estTimestamp, EnumSet<EventFlag> eventFlags,
-                                          final AntPlusFitnessEquipmentPcc.Capabilities capabilities)
-            {
-
-                IndoorCyclingService.this.capabilities = capabilities;
-            }
-        });
-
-        fePcc.getTrainerMethods().subscribeBasicResistanceEvent(new AntPlusFitnessEquipmentPcc.IBasicResistanceReceiver()
-        {
-
-            @Override
-            public void onNewBasicResistance(final long estTimestamp, EnumSet<EventFlag> eventFlags,
-                                             final BigDecimal totalResistance)
-            {
-                runOnUiThread(new Runnable()
-                {
-                    @Override
-                    public void run()
-                    {
-
-                        Toast.makeText(IndoorCyclingService.this,
-                                totalResistance.toString() + "%",
-                                Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-        });
-        */
-    }
     void sendCommand(String command)
     {
         sendCommand(command,null);
@@ -506,7 +327,7 @@ public class IndoorCyclingService extends Service{
         this.sendBroadcast(intent);
     }
 
-    void sendTextMessage(String message)
+    public void sendTextMessage(String message)
     {
         Log.i(TAG, "sendTextMessage " + message);
         Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
@@ -514,10 +335,55 @@ public class IndoorCyclingService extends Service{
         intent.putExtra("message", message);
         this.sendBroadcast(intent);
     }
+    void sendPower(int cyclingPower)
+    {
+
+        BigDecimal bdCyclingPower = new BigDecimal(cyclingPower);
+
+        double luftdichte = 1.2;
+        double cw = 0.39;
+        //double speed = Math.sqrt( bdCyclingPower.doubleValue() / ( luftdichte * cw )) ;
+        double speed = Math.pow( bdCyclingPower.doubleValue() * 0.9 /* factor for roll force */ * 2.0 / ( luftdichte * cw ) , 1.0 / 3.0) ;
+
+
+        BigDecimal bdSpeed = new BigDecimal(speed);
+        bikeActivity.setSpeed(bdSpeed);
+        long duration = (System.currentTimeMillis() - lastPowerTimestamp) / 1000;
+        if(lastPowerTimestamp == 0)
+        {
+            lastPowerTimestamp = System.currentTimeMillis();
+
+        }else if(duration > 0 && bdSpeed.intValue() > 0) {
+            double distance = speed * duration;
+
+            cumulativeDistance += (long) distance;
+            bikeActivity.setDistance(cumulativeDistance);
+
+            Log.i(TAG, "sendPower duration:" + duration + " distance:" + distance + " speed:" + speed + " power:" + cyclingPower);
+            lastPowerTimestamp = System.currentTimeMillis();
+
+
+        }
+        bikeActivity.setPower(bdCyclingPower);
+
+
+        sendControlText("speed", IndoorCyclingService.this.bikeActivity.getSpeedString());
+        sendControlText("power", IndoorCyclingService.this.bikeActivity.getPowerString() );
+        sendControlText("distance", IndoorCyclingService.this.bikeActivity.getDistanceString());
+
+    }
+    void sendHeartRate(int heartRate)
+    {
+        bikeActivity.setHeartRate(heartRate);
+        sendControlText("heartrate", IndoorCyclingService.this.bikeActivity.getHeartRateString());
+
+
+    }
 
     void sendControlText(String control,String text)
     {
-        Log.i(TAG, "sendControlText " + control + " " + text);
+        //Log.i(TAG, "sendControlText " + control + " " + text);
+
         Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
         intent.putExtra("command", "control_text");
         intent.putExtra("control", control);
@@ -531,6 +397,31 @@ public class IndoorCyclingService extends Service{
         intent.putExtra("command", "control_status");
         intent.putExtra("control", control);
         intent.putExtra("status", status);
+        this.sendBroadcast(intent);
+    }
+
+
+    void sendShowWait(String text)
+    {
+
+        Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
+        intent.putExtra("command", "show_wait");
+        intent.putExtra("text", text);
+        this.sendBroadcast(intent);
+    }
+    void sendHideWait()
+    {
+
+        Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
+        intent.putExtra("command", "hide_wait");
+        this.sendBroadcast(intent);
+    }
+
+    void sendSettings()
+    {
+
+        Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
+        intent.putExtra("command", "show_settings");
         this.sendBroadcast(intent);
     }
 

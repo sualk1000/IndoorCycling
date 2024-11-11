@@ -19,7 +19,8 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.net.Uri;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
@@ -33,24 +34,35 @@ import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentActivity;
 
-import de.sualk1000.indoorcycler.fitnessequipment.Dialog_ConfigSettings;
-import com.dsi.ant.plugins.antplus.pcc.AntPlusBikePowerPcc;
+import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.AxisBase;
+import com.github.mikephil.charting.components.Legend;
+import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
+import com.github.mikephil.charting.data.Entry;
+import com.github.mikephil.charting.data.LineData;
+import com.github.mikephil.charting.data.LineDataSet;
+import com.github.mikephil.charting.formatter.IAxisValueFormatter;
+import com.github.mikephil.charting.interfaces.datasets.ILineDataSet;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
 
-/**
- * Dashboard 'menu' of available sampler activities
- */
+
 public class Activity_IndoorCycling extends FragmentActivity implements ServiceConnection {
 
     private final static String TAG = Activity_IndoorCycling.class.getSimpleName();
 
     private Context mContext;
-    private IndoorCyclingService indoorCyclingService;
+    public IndoorCyclingService indoorCyclingService;
 //    private com.dsi.ant.plugins.antplus.pccbase.MultiDeviceSearch.MultiDeviceSearchResult bikePower;
 
     @Override
     protected void onSaveInstanceState(Bundle savedInstanceState) {
+        Log.i(TAG, "onSaveInstanceState");
         super.onSaveInstanceState(savedInstanceState);
 
 
@@ -61,9 +73,11 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
     @SuppressWarnings("serial") //Suppress warnings about hash maps not having custom UIDs
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.i(TAG, "onCreate");
         super.onCreate(savedInstanceState);
 
 
+        UberManager.getInstance().setMainActivity(this);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mContext = getApplicationContext();
@@ -79,12 +93,6 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             public void onClick(View v)
             {
                 indoorCyclingService.onStartButton();
-                //((Button) findViewById(R.id.buttonStart)).setEnabled(false);
-                //((Button) findViewById(R.id.buttonStop)).setEnabled(true);
-
-
-
-                //Toast.makeText(Activity_IndoorCycling.this, "Start", Toast.LENGTH_LONG).show();
 
             }
 
@@ -96,6 +104,11 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             {
 
                 indoorCyclingService.onStopButton();
+                //LineChart  chart = (LineChart) findViewById(R.id.my_chart);
+
+                //chart.getData().notifyDataChanged();
+                //chart.notifyDataSetChanged();
+                //chart.invalidate();
 
 
             }
@@ -118,9 +131,7 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             @Override
             public void onClick(View v)
             {
-
-                Dialog_ConfigSettings dialog = new Dialog_ConfigSettings();
-                dialog.show(getFragmentManager(), "Configure User Profile");
+                showSettings();
             }
 
         });
@@ -131,6 +142,7 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
         //((TextView) findViewById(R.id.textView_Message)).setText("");
         ((Button) findViewById(R.id.buttonStartScan)).setEnabled(false);
 
+        com.github.mikephil.charting.utils.Utils.init(this);
 
     }
     /*
@@ -139,8 +151,11 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
         Log.i(TAG, "onDestroy");
+        super.onDestroy();
+        UberManager.getInstance().cleanup();
+
+
         /*
         heartRateMonitor.stopScan();
 
@@ -190,6 +205,7 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
                 dialog.cancel();
 
                 file.delete();
+
             }
         });
         AlertDialog alert11 = builder1.create();
@@ -218,6 +234,55 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             ((Button) findViewById(R.id.buttonStop)).setEnabled(isSportActivityStarted);
 
         }
+
+        LineChart  hearRateChart = (LineChart) findViewById(R.id.my_chart);
+        hearRateChart.getDescription().setEnabled(false);
+        hearRateChart.setDefaultFocusHighlightEnabled(false);
+
+        Legend l = hearRateChart.getLegend();
+        l.setEnabled(true);
+
+
+        XAxis xAxis = hearRateChart.getXAxis();
+        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+        xAxis.setValueFormatter(new IAxisValueFormatter() {
+            private final SimpleDateFormat mFormat = new SimpleDateFormat("mm:ss");
+
+            @Override
+            public String getFormattedValue(float value, AxisBase axis) {
+
+                long millis = TimeUnit.SECONDS.toMillis((long) value);
+                return mFormat.format(new Date(millis));
+            }
+        });
+
+        YAxis leftAxis = hearRateChart.getAxisLeft();
+        leftAxis.setPosition(YAxis.YAxisLabelPosition.INSIDE_CHART);
+        leftAxis.setDrawGridLines(false);
+        leftAxis.setGranularityEnabled(true);
+        leftAxis.setAxisMinimum(0f);
+        leftAxis.setAxisMaximum(30f);
+        leftAxis.setYOffset(-9f);
+        leftAxis.setTextColor(Color.GREEN);
+
+        YAxis rightAxis = hearRateChart.getAxisRight();
+        rightAxis.setPosition(YAxis.YAxisLabelPosition.INSIDE_CHART);
+        rightAxis.setDrawGridLines(false);
+        rightAxis.setGranularityEnabled(true);
+        rightAxis.setAxisMinimum(40f);
+        rightAxis.setAxisMaximum(50f);
+        rightAxis.setYOffset(-9f);
+        rightAxis.setTextColor(Color.RED);
+        /*
+        ArrayList<ILineDataSet> dataSets2 = new ArrayList<>();
+        dataSets2.add(indoorCyclingService.powerDataSet);
+        dataSets2.add(indoorCyclingService.heartRateDataSet);
+        hearRateChart.setData(new LineData(dataSets2));
+
+         */
+        xAxis.setAxisMinimum(0f);
+        xAxis.setAxisMaximum(120f);
+
     }
 
     @Override
@@ -228,13 +293,38 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
 
     @Override
     protected void onResume() {
-        super.onResume();
         Log.i(TAG, "onResume ");
+        super.onResume();
         Intent intent= new Intent(this, IndoorCyclingService.class);
         bindService(intent, this, Context.BIND_AUTO_CREATE);
 
         registerReceiver(receiver, new IntentFilter(
                 IndoorCyclingService.NOTIFICATION));
+
+
+        LineChart  chart = (LineChart) findViewById(R.id.my_chart);
+        if(chart.getData() != null) {
+
+            Log.i(TAG, "onResume chart has data: " + chart.getData().getDataSetCount());
+            chart.getData().notifyDataChanged();
+        }else {
+            Log.i(TAG, "onResume chart has NO data");
+
+        }
+
+        /*
+        chart.notifyDataSetChanged();
+        chart.invalidate();
+
+         */
+
+        /*
+        if(indoorCyclingService != null && indoorCyclingService.powerDataSet != null) {
+            ArrayList<ILineDataSet> dataSets2 = new ArrayList<>();
+            dataSets2.add(indoorCyclingService.powerDataSet); // add the dat
+            dataSets2.add(indoorCyclingService.heartRateDataSet); // add the dat
+            chart.setData(new LineData(dataSets2));
+        }*/
     }
 
     @Override
@@ -255,12 +345,9 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             Bundle bundle = intent.getExtras();
             if (bundle != null) {
                 String command = bundle.getString("command");
-                Log.i(TAG, "onReceive " + command );
+                //Log.i(TAG, "onReceive " + command );
                 switch(command)
                 {
-                    case "show_install":
-                        showInstall();
-                        break;
                     case "ask":
                         askSend();
                         break;
@@ -286,6 +373,9 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
                     case "hide_wait":
                         hideWait();
                         break;
+                    case "show_settings":
+                        showSettings();
+                        break;
                     case "control_text":
                         String control2 = bundle.getString("control");
                         String text = bundle.getString("text");
@@ -310,15 +400,72 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             case "speed":
             ((TextView) findViewById(R.id.textView_Speed)).setText(text);
             break;
+            case "distance":
+                ((TextView) findViewById(R.id.textView_Distance)).setText(text);
+                break;
+            case "time":
+                ((TextView) findViewById(R.id.textView_Time)).setText(text);
+
+
+                if(indoorCyclingService.powerDataSet.getValues().size() > 0)
+                {
+
+
+                    LineChart  chart = (LineChart) findViewById(R.id.my_chart);
+                    if(chart.getData() == null) {
+
+                        ArrayList<ILineDataSet> dataSets2 = new ArrayList<>();
+                        dataSets2.add(indoorCyclingService.powerDataSet);
+                        dataSets2.add(indoorCyclingService.heartRateDataSet);
+                        chart.setData(new LineData(dataSets2));
+                    }
+                    XAxis xAxis = chart.getXAxis();
+
+                    int last = indoorCyclingService.heartRateDataSet.getValues().size();
+                    if(last % 10 == 0 && last >= 120) {
+                        xAxis.setAxisMinimum(1f * (last-100));
+                        xAxis.setAxisMaximum(1f * last + 20);
+
+                    }
+
+                    LineDataSet setHeartRate = (LineDataSet) chart.getData().getDataSetByIndex(1);
+                    LineDataSet setPower = (LineDataSet) chart.getData().getDataSetByIndex(0);
+
+                    Entry power = setPower.getValues().get(last-1);
+                    YAxis yAxisPower = chart.getAxisLeft();
+                    if(yAxisPower.getAxisMaximum() <= power.getY())
+                    {
+                        float newMax = power.getY() - power.getY() % 10  +10;
+                        yAxisPower.setAxisMaximum(newMax);
+                    }
+                    if(yAxisPower.getAxisMinimum() >= power.getY())
+                    {
+                        float newMin = power.getY() - power.getY() % 10  - 10;
+                        //if(newMin < 0) newMin = 0;
+                        yAxisPower.setAxisMinimum(newMin);
+                    }
+                    Entry heartRate = setHeartRate.getValues().get(last-1);
+                    YAxis yAxisHeartRate = chart.getAxisRight();
+                    if(yAxisHeartRate.getAxisMaximum() <= heartRate.getY())
+                    {
+                        float newMax = heartRate.getY() - heartRate.getY() % 10 + 10;
+                        yAxisHeartRate.setAxisMaximum(newMax);
+                    }
+                    //set1.notifyDataSetChanged();
+                    chart.getData().notifyDataChanged();
+                    chart.notifyDataSetChanged();
+                    chart.invalidate();
+                }
+
+                break;
+            case "heartrate":
+                ((TextView) findViewById(R.id.textView_HeartRate)).setText(text);
+                break;
             case "power":
                 ((TextView) findViewById(R.id.textView_Power)).setText(text);
                 break;
             case "scan":
                 ((TextView) findViewById(R.id.buttonStartScan)).setText(text);
-                break;
-            case "message":
-            default:
-                ((TextView) findViewById(R.id.textView_Message)).setText(text);
                 break;
 
         }
@@ -339,7 +486,7 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
                 break;
             case "message":
             default:
-                ((TextView) findViewById(R.id.textView_Message)).setEnabled(status);
+                ((TextView) findViewById(R.id.textView_Time)).setEnabled(status);
                 break;
 
         }
@@ -363,15 +510,24 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
     Dialog_ProgressWaiter progressDialog = null;
     void showWait(String message)
     {
-        if(progressDialog == null)
+        if(progressDialog == null) {
             progressDialog = new Dialog_ProgressWaiter();
-        else
-            progressDialog.setStatus(message);
+            progressDialog.show(getFragmentManager(), "MyProgressDialog");
+
+        }
+        progressDialog.setStatus(message);
 
 
-        progressDialog.show(getFragmentManager(), "MyProgressDialog");
+
     }
 
+    void showSettings()
+    {
+
+        Dialog_ConfigSettings dialog = new Dialog_ConfigSettings();
+        dialog.show(getFragmentManager(), "Configure User Profile");
+
+    }
     void hideWait()
     {
         if(progressDialog == null)
@@ -387,42 +543,10 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
 
     void requestBluetooth() {
         Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+             return;
+        }
         startActivityForResult(enabledIntent, 11);
     }
-    void showInstall()
-    {
-        AlertDialog.Builder adlgBldr = new AlertDialog.Builder(
-                Activity_IndoorCycling.this);
-        adlgBldr.setTitle("Missing Dependency");
-        adlgBldr.setMessage("The required service\n\""
-                + AntPlusBikePowerPcc.getMissingDependencyName()
-                + "\"\n was not found. You need to install the ANT+ Plugins service or"
-                + "you may need to update your existing version if you already have it"
-                + ". Do you want to launch the Play Store to get it?");
-        adlgBldr.setCancelable(true);
-        adlgBldr.setPositiveButton("Go to Store", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                Intent startStore = null;
-                startStore = new Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse("market://details?id="
-                                + AntPlusBikePowerPcc.getMissingDependencyPackageName()));
-                startStore.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-                Activity_IndoorCycling.this.startActivity(startStore);
-            }
-        });
-        adlgBldr.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.dismiss();
-            }
-        });
-
-        final AlertDialog waitDialog = adlgBldr.create();
-        waitDialog.show();
-
-
-    }
 }
