@@ -34,8 +34,6 @@ public class BLEScanner {
     public ArrayList<String> bleItemList;
     public Dialog_BLEScanner.StableArrayAdapter bleItemAdapter;
     private  SingBroadcastReceiver mReceiver;
-    public static final int REQUEST_ACCESS_COARSE_LOCATION = 1;
-    public static final int REQUEST_ENABLE_BLUETOOTH = 11;
 
     private BluetoothAdapter bluetoothAdapter;
     String bleHeartbeatDeviceName;
@@ -53,29 +51,15 @@ public class BLEScanner {
        // this.bluetoothManager = bluetoothManager;
         this.indoorCyclingService = indoorCyclingService;
 
+
         bluetoothAdapter = bluetoothManager.getAdapter();
 
         if (checkBluetoothState() == false ) {
 
-        }else {
-            if (checkCoarseLocationPermission() == false) {
-                indoorCyclingService.sendTextMessage("Unable to obtain a BluetoothAdapter.");
-            }
         }
     }
 
 
-    private boolean checkCoarseLocationPermission() {
-
-
-        if(ContextCompat.checkSelfPermission(indoorCyclingService, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
-            indoorCyclingService.sendCommand("reques_permission_2");
-            return false;
-        }else{
-            return true;
-        }
-
-    }
 
     @SuppressLint("MissingPermission")
     private boolean checkBluetoothState() {
@@ -155,10 +139,6 @@ public class BLEScanner {
         garmin_user = sharedPreferences.getString("garmin_user", "");
 
         if(use_garmin.equals("true") && garmin_user.equals(""))
-            return false;
-        garmin_pwd = sharedPreferences.getString("garmin_pwd", "");
-
-        if(garmin_pwd.equals(""))
             return false;
 
         return true;

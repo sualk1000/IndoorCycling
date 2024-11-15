@@ -357,10 +357,13 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
                     case "reques_permission_2":
                         requestPermission2();
                         break;
-                    case "request_bluetooth":
+                    case "reques_permission_3":
+                        requestPermission3();
+                        break;
+                    /*case "request_bluetooth":
                         requestBluetooth();
                         break;
-
+                    */
                     case "control_status":
                         String control = bundle.getString("control");
                         boolean status = bundle.getBoolean("status");
@@ -406,56 +409,8 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
             case "time":
                 ((TextView) findViewById(R.id.textView_Time)).setText(text);
 
+                onTimer();
 
-                if(indoorCyclingService.powerDataSet.getValues().size() > 0)
-                {
-
-
-                    LineChart  chart = (LineChart) findViewById(R.id.my_chart);
-                    if(chart.getData() == null) {
-
-                        ArrayList<ILineDataSet> dataSets2 = new ArrayList<>();
-                        dataSets2.add(indoorCyclingService.powerDataSet);
-                        dataSets2.add(indoorCyclingService.heartRateDataSet);
-                        chart.setData(new LineData(dataSets2));
-                    }
-                    XAxis xAxis = chart.getXAxis();
-
-                    int last = indoorCyclingService.heartRateDataSet.getValues().size();
-                    if(last % 10 == 0 && last >= 120) {
-                        xAxis.setAxisMinimum(1f * (last-100));
-                        xAxis.setAxisMaximum(1f * last + 20);
-
-                    }
-
-                    LineDataSet setHeartRate = (LineDataSet) chart.getData().getDataSetByIndex(1);
-                    LineDataSet setPower = (LineDataSet) chart.getData().getDataSetByIndex(0);
-
-                    Entry power = setPower.getValues().get(last-1);
-                    YAxis yAxisPower = chart.getAxisLeft();
-                    if(yAxisPower.getAxisMaximum() <= power.getY())
-                    {
-                        float newMax = power.getY() - power.getY() % 10  +10;
-                        yAxisPower.setAxisMaximum(newMax);
-                    }
-                    if(yAxisPower.getAxisMinimum() >= power.getY())
-                    {
-                        float newMin = power.getY() - power.getY() % 10  - 10;
-                        //if(newMin < 0) newMin = 0;
-                        yAxisPower.setAxisMinimum(newMin);
-                    }
-                    Entry heartRate = setHeartRate.getValues().get(last-1);
-                    YAxis yAxisHeartRate = chart.getAxisRight();
-                    if(yAxisHeartRate.getAxisMaximum() <= heartRate.getY())
-                    {
-                        float newMax = heartRate.getY() - heartRate.getY() % 10 + 10;
-                        yAxisHeartRate.setAxisMaximum(newMax);
-                    }
-                    //set1.notifyDataSetChanged();
-                    chart.getData().notifyDataChanged();
-                    chart.notifyDataSetChanged();
-                    chart.invalidate();
-                }
 
                 break;
             case "heartrate":
@@ -468,6 +423,60 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
                 ((TextView) findViewById(R.id.buttonStartScan)).setText(text);
                 break;
 
+        }
+
+    }
+
+    void onTimer()
+    {
+        if(indoorCyclingService.powerDataSet.getValues().size() > 0)
+        {
+
+
+            LineChart  chart = (LineChart) findViewById(R.id.my_chart);
+            if(chart.getData() == null) {
+
+                ArrayList<ILineDataSet> dataSets2 = new ArrayList<>();
+                dataSets2.add(indoorCyclingService.powerDataSet);
+                dataSets2.add(indoorCyclingService.heartRateDataSet);
+                chart.setData(new LineData(dataSets2));
+            }
+            XAxis xAxis = chart.getXAxis();
+
+            int last = indoorCyclingService.heartRateDataSet.getValues().size();
+            if(last % 10 == 0 && last >= 120) {
+                xAxis.setAxisMinimum(1f * (last-100));
+                xAxis.setAxisMaximum(1f * last + 20);
+
+            }
+
+            LineDataSet setHeartRate = (LineDataSet) chart.getData().getDataSetByIndex(1);
+            LineDataSet setPower = (LineDataSet) chart.getData().getDataSetByIndex(0);
+
+            Entry power = setPower.getValues().get(last-1);
+            YAxis yAxisPower = chart.getAxisLeft();
+            if(yAxisPower.getAxisMaximum() <= power.getY())
+            {
+                float newMax = power.getY() - power.getY() % 10  +10;
+                yAxisPower.setAxisMaximum(newMax);
+            }
+            if(yAxisPower.getAxisMinimum() >= power.getY())
+            {
+                float newMin = power.getY() - power.getY() % 10  - 10;
+                //if(newMin < 0) newMin = 0;
+                yAxisPower.setAxisMinimum(newMin);
+            }
+            Entry heartRate = setHeartRate.getValues().get(last-1);
+            YAxis yAxisHeartRate = chart.getAxisRight();
+            if(yAxisHeartRate.getAxisMaximum() <= heartRate.getY())
+            {
+                float newMax = heartRate.getY() - heartRate.getY() % 10 + 10;
+                yAxisHeartRate.setAxisMaximum(newMax);
+            }
+            //set1.notifyDataSetChanged();
+            chart.getData().notifyDataChanged();
+            chart.notifyDataSetChanged();
+            chart.invalidate();
         }
 
     }
@@ -491,12 +500,17 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
 
         }
     }
+    void requestPermission3()
+    {
+        ActivityCompat.requestPermissions(this, new String[]{
+                Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT}, 1);
+
+    }
 
     void requestPermission1()
     {
         ActivityCompat.requestPermissions(this, new String[]{
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_BACKGROUND_LOCATION,}, 1);
+                Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT}, 1);
 
     }
 
@@ -541,12 +555,5 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
     }
 
 
-    void requestBluetooth() {
-        Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-             return;
-        }
-        startActivityForResult(enabledIntent, 11);
-    }
 
 }

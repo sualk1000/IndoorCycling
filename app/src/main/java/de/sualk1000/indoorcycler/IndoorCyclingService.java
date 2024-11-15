@@ -1,10 +1,12 @@
 package de.sualk1000.indoorcycler;
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationManager;
@@ -14,6 +16,8 @@ import android.content.Intent;
 import android.provider.Settings;
 import android.util.Log;
 
+
+import androidx.core.content.ContextCompat;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.YAxis;
@@ -55,30 +59,18 @@ public class IndoorCyclingService extends Service{
         bikeActivity = new BikeActivity(this);
 
         heartRateDataSet = new LineDataSet(new ArrayList<Entry>(), "HeartRate");
-        heartRateDataSet.setLineWidth(0.5f);
+        heartRateDataSet.setLineWidth(2.0f);
         heartRateDataSet.setDrawCircles(false);
         heartRateDataSet.setDrawValues(false);
         heartRateDataSet.setAxisDependency(YAxis.AxisDependency.RIGHT);
         heartRateDataSet.setColor(Color.RED);
 
         powerDataSet = new LineDataSet(new ArrayList<Entry>(), "Power");
-        powerDataSet.setLineWidth(0.5f);
+        powerDataSet.setLineWidth(2.0f);
         powerDataSet.setDrawCircles(false);
         powerDataSet.setDrawValues(false);
         powerDataSet.setColor(Color.GREEN);
 
-        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            @SuppressLint("MissingPermission") Location locationGPS = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-            if (locationGPS != null){
-                bikeActivity.lat = (int) (11930465 * locationGPS.getLatitude());
-                bikeActivity.lon = (int) (11930465 * locationGPS.getLongitude());
-                bikeActivity.altitude = locationGPS.getAltitude();
-
-
-            }
-
-        }
 
     }
 
@@ -87,32 +79,10 @@ public class IndoorCyclingService extends Service{
         Log.i(TAG, "onStartCommand ");
 
         serviceStarted = true;
-        //this.heartRateMonitor = new HeartRateMonitor((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
-
-        //this.t100Monitor = new T100Monitor((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
-
-        bleScanner = new BLEScanner((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
-
-
-
         sendControlStatus("start",false);
         sendControlStatus("stop",false);
 
-        if(bleScanner.checkSettings() == false)
-        {
-            sendSettings();
-        }else {
-
-            if((this.bleScanner.bleHeartbeatDeviceName == null
-                    || this.bleScanner.bleHeartbeatDeviceName.equals(""))
-                    && (this.bleScanner.bikeDeviceName == null
-                    || this.bleScanner.bikeDeviceName.equals(""))
-            )
-                // No BLE devices set
-                sendControlStatus("start",true);
-            else
-                bleScanner.startScan();
-        }
+        checkPermissions();
         return mStartMode;
     }
 
@@ -131,6 +101,11 @@ public class IndoorCyclingService extends Service{
     @Override
     public void onRebind(Intent intent) {
         Log.i(TAG, "onRebind ");
+
+        if(checkPermissions()== false)
+        {
+            return;
+        }
         if(heartRateMonitor != null && heartRateMonitor.isConnected())
             heartRateMonitor.close();
 
@@ -143,6 +118,43 @@ public class IndoorCyclingService extends Service{
 
     }
 
+    boolean checkPermissions()
+    {
+        if (checkBluetoothScanPermission() == false) {
+            sendTextMessage("Need Bluetooth Scan Permission");
+            return false;
+        }
+        if (checkBluetoothConnectPermission() == false) {
+            sendTextMessage("Need Bluetooth Scan Permission");
+            return false;
+        }
+        if (checkCoarseLocationPermission() == false) {
+            sendTextMessage("Need Coarse Location Permission");
+            return false;
+        }
+
+        bleScanner = new BLEScanner((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
+        if(bleScanner.checkSettings() == false)
+        {
+            sendSettings();
+        }else {
+
+            if((this.bleScanner.bleHeartbeatDeviceName == null
+                    || this.bleScanner.bleHeartbeatDeviceName.equals("")
+                    || this.bleScanner.bleHeartbeatDeviceName.equals("<not set>"))
+                    && (this.bleScanner.bikeDeviceName == null
+                    || this.bleScanner.bikeDeviceName.equals("")
+                    || this.bleScanner.bikeDeviceName.equals("<not set>"))
+            )
+                // No BLE devices set
+                sendControlStatus("start",true);
+            else
+                bleScanner.startScan();
+        }
+
+        return true;
+
+    }
     @Override
     public void onDestroy() {
         Log.i(TAG, "onDestroy ");
@@ -151,6 +163,20 @@ public class IndoorCyclingService extends Service{
     }
 
     public void onStartButton() {
+
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            @SuppressLint("MissingPermission") Location locationGPS = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (locationGPS != null){
+                bikeActivity.lat = (int) (11930465 * locationGPS.getLatitude());
+                bikeActivity.lon = (int) (11930465 * locationGPS.getLongitude());
+                bikeActivity.altitude = locationGPS.getAltitude();
+
+
+            }
+
+        }
+
         if(timer != null)
         {
             sendTextMessage("Already started.");
@@ -423,6 +449,40 @@ public class IndoorCyclingService extends Service{
         Intent intent = new Intent(IndoorCyclingService.NOTIFICATION);
         intent.putExtra("command", "show_settings");
         this.sendBroadcast(intent);
+    }
+    private boolean checkBluetoothScanPermission() {
+
+
+        if(ContextCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED){
+            sendCommand("reques_permission_1");
+            return false;
+        }else {
+                return true;
+        }
+
+
+    }
+    private boolean checkBluetoothConnectPermission() {
+
+
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED){
+            sendCommand("reques_permission_3");
+            return false;
+        }else {
+            return true;
+        }
+
+
+    }
+    private boolean checkCoarseLocationPermission() {
+
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+            sendCommand("reques_permission_2");
+            return false;
+        }else{
+            return true;
+        }
+
     }
 
 }

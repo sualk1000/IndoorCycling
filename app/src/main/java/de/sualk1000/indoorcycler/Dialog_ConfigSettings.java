@@ -133,7 +133,8 @@ public class Dialog_ConfigSettings extends DialogFragment
         String use_garmin = sharedPreferences.getString("use_garmin", "");
         if(use_garmin.equals("true") )
             cb_garmin.setChecked(true);
-
+        else
+            cb_garmin.setChecked(false);
 
 
         return builder.create();
@@ -214,7 +215,6 @@ public class Dialog_ConfigSettings extends DialogFragment
             }
                 sharedPreferenceEditor.putString("heartbeat", button_heartrate_ble.getText().toString());
                 sharedPreferenceEditor.putString("bike", button_bike_ble.getText().toString());
-                sharedPreferenceEditor.putString("use_garmin", "true");
                 sharedPreferenceEditor.commit();
             } catch (Exception e) {
                 Log.e(TAG, e.toString());
