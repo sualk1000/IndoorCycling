@@ -538,6 +538,8 @@ public class Activity_IndoorCycling extends FragmentActivity implements ServiceC
     void showSettings()
     {
 
+        indoorCyclingService.stopScan();
+
         Dialog_ConfigSettings dialog = new Dialog_ConfigSettings();
         dialog.show(getFragmentManager(), "Configure User Profile");
 

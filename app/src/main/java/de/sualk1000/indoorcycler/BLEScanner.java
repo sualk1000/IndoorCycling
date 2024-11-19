@@ -31,7 +31,9 @@ import java.util.UUID;
 public class BLEScanner {
 
     private final IndoorCyclingService indoorCyclingService;
-    public ArrayList<String> bleItemList;
+
+    public final ArrayList<String> bleItemList = new ArrayList<String>();
+
     public Dialog_BLEScanner.StableArrayAdapter bleItemAdapter;
     private  SingBroadcastReceiver mReceiver;
 
@@ -44,19 +46,27 @@ public class BLEScanner {
     private String garmin_pwd;
     private BluetoothDevice bleHeartbeatDevice;
     private BluetoothDevice bleBikeDevice;
-    private BluetoothDevice bikeDevice;
 
+
+    private static BLEScanner instance = null;
+
+    public static BLEScanner getInstance()
+    {
+        return instance;
+    }
     public BLEScanner(BluetoothManager bluetoothManager, IndoorCyclingService indoorCyclingService)
     {
-       // this.bluetoothManager = bluetoothManager;
+        if(instance != null)
+            throw new IllegalArgumentException("BLEScanner already exists");
         this.indoorCyclingService = indoorCyclingService;
-
-
         bluetoothAdapter = bluetoothManager.getAdapter();
 
+        instance = this;
         if (checkBluetoothState() == false ) {
+            throw new IllegalArgumentException("Invalid BLE State");
 
         }
+
     }
 
 
@@ -109,7 +119,7 @@ public class BLEScanner {
         bluetoothAdapter.startDiscovery() ;
     }
     @SuppressLint("MissingPermission")
-    void stopScan()
+    void stopScan(boolean notifyService)
     {
         Log.e(TAG, "Stop Scan.");
         if(bluetoothAdapter.isDiscovering() )
@@ -120,7 +130,8 @@ public class BLEScanner {
             mReceiver = null;
 
         }
-        this.indoorCyclingService.onScanFinished();
+        if(notifyService)
+            this.indoorCyclingService.onScanFinished();
     }
     private final static String TAG = BLEScanner.class.getSimpleName();
 
@@ -165,9 +176,10 @@ public class BLEScanner {
                 if(device.getName() != null) {
                     String derp = device.getName() + " - " + device.getAddress();
                     Log.d(TAG, "Device " + derp);
-                    if (bleItemList != null) {
+                    if (bleItemList != null && bleItemList.contains(device.getName()) == false){
                         bleItemList.add(device.getName());
-                        bleItemAdapter.notifyDataSetChanged();
+                        if(bleItemAdapter != null)
+                            bleItemAdapter.notifyDataSetChanged();
                     }
                     if (bleHeartbeatDeviceName != null && device.getName().equals(bleHeartbeatDeviceName)) {
                         bleHeartbeatDevice = device;
@@ -175,8 +187,8 @@ public class BLEScanner {
                     }
 
                     if (bikeDeviceName != null && device.getName().equals(bikeDeviceName)) {
-                        bikeDevice = device;
-                        indoorCyclingService.sendStartBike(bikeDevice);
+                        bleBikeDevice = device;
+                        indoorCyclingService.sendStartBike(bleBikeDevice);
                     }
                 }else
                 {
@@ -186,22 +198,25 @@ public class BLEScanner {
                 }
                 //Toast.makeText(context, derp, Toast.LENGTH_LONG);
 
-                if(bleHeartbeatDevice != null && bikeDevice != null)
+                if(bleHeartbeatDevice != null && bleBikeDevice != null)
                 {
                     Log.d(TAG, "All Devices found");
-                    stopScan();
+                    stopScan(true);
                 }
 
             }
 
             if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
                 //report user
-                Log.d(TAG,"Started");
+                Log.d(TAG,"Discovery Started");
+
+                bleItemList.clear();
+                bleItemList.add("<not set>");
              }
 
             if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-                Log.d(TAG,"Finished");
-                stopScan();
+                Log.d(TAG,"Discovery Finished");
+                stopScan(true);
             }
 
         }

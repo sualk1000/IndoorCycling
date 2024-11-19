@@ -57,6 +57,7 @@ public class IndoorCyclingService extends Service{
     public void onCreate() {
         Log.i(TAG, "onCreate ");
         bikeActivity = new BikeActivity(this);
+        bleScanner = new BLEScanner((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
 
         heartRateDataSet = new LineDataSet(new ArrayList<Entry>(), "HeartRate");
         heartRateDataSet.setLineWidth(2.0f);
@@ -133,7 +134,6 @@ public class IndoorCyclingService extends Service{
             return false;
         }
 
-        bleScanner = new BLEScanner((BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE),this);
         if(bleScanner.checkSettings() == false)
         {
             sendSettings();
@@ -328,6 +328,11 @@ public class IndoorCyclingService extends Service{
             return;
         }
 
+    }
+
+    public void stopScan() {
+
+        bleScanner.stopScan(false);
     }
 
 

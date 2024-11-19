@@ -67,18 +67,19 @@ public class Dialog_BLEScanner extends DialogFragment
                     @Override
                     public void onClick(DialogInterface dialog, int which)
                     {
-                        bleScanner.stopScan();
+                        bleScanner.stopScan(false);
                         //Let dialog dismiss
                     }
                 });
 
         simpleList = (ListView) detailsView.findViewById(R.id.bleItemsList);
-        final ArrayList<String> list = new ArrayList<String>();
+        bleScanner = BLEScanner.getInstance();
+
         //list.add(values[i]);
         final StableArrayAdapter adapter = new StableArrayAdapter(getActivity(),
-                android.R.layout.simple_list_item_1, list);
+                android.R.layout.simple_list_item_1, bleScanner.bleItemList);
         simpleList.setAdapter(adapter);
-        list.add("<not set>");
+
 
         simpleList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
 
@@ -91,6 +92,8 @@ public class Dialog_BLEScanner extends DialogFragment
                     dialog_ConfigSettings.setHearRate(item);
                 else
                     dialog_ConfigSettings.setBike(item);
+
+                bleScanner.stopScan(false);
                 AlertDialog dialog = (AlertDialog) getDialog();
                 dialog.dismiss();
 
@@ -98,8 +101,7 @@ public class Dialog_BLEScanner extends DialogFragment
             }
 
         });
-        bleScanner = new BLEScanner((BluetoothManager)getActivity().getSystemService(Context.BLUETOOTH_SERVICE),UberManager.getInstance().getMainActivity().indoorCyclingService);
-        bleScanner.bleItemList = list;
+
         bleScanner.bleItemAdapter = adapter;
         bleScanner.startScan();
         return builder.create();

@@ -91,14 +91,14 @@ public class BikeActivity {
     }
     SimpleDateFormat simpleDateFormat1 = new SimpleDateFormat("HH:mm:ss");
     SimpleDateFormat simpleDateFormat2 = new SimpleDateFormat("mm:ss");
-    public String getText2() {
+    /*public String getText2() {
         String ret = "" ;
         if(start != null) {
             long time = (cal.getTime().getTime() - start.getTime());
             if(time > ( 3600 * 1000) )
-                ret += simpleDateFormat1.format(new Date(time));
+                ret += simpleDateFormat1.format(new Date(time)) + " HH:mm:ss";
             else
-                ret += simpleDateFormat2.format(new Date(time));
+                ret += simpleDateFormat2.format(new Date(time)) + " mm:ss";
             if(distance + distance_offset < 1000)
                 ret += "  " + (distance + distance_offset) + " m";
             else
@@ -106,7 +106,7 @@ public class BikeActivity {
             ret += " " +heartRate + " bpm";
         }
         return ret;
-    }
+    }*/
 
     public String getHeartRateString() {
         return String.format("%d hz", heartRate);
@@ -146,9 +146,9 @@ public class BikeActivity {
         if(start != null) {
             long time = (new Date().getTime() - start.getTime());
             if(time > ( 3600 * 1000) )
-                ret += simpleDateFormat1.format(new Date(time));
+                ret += simpleDateFormat1.format(new Date(time)) + " HH:mm:ss";
             else
-                ret += simpleDateFormat2.format(new Date(time));
+                ret += simpleDateFormat2.format(new Date(time)) + " mm:ss";
         }
         return ret;
     }

@@ -71,6 +71,8 @@ public class Dialog_ConfigSettings extends DialogFragment
                     @Override
                     public void onClick(DialogInterface dialog, int which)
                     {
+                        UberManager.getInstance().getMainActivity().indoorCyclingService.onScanFinished();
+
                         //Let dialog dismiss
                     }
                 });
@@ -225,6 +227,7 @@ public class Dialog_ConfigSettings extends DialogFragment
 
 
             dialogSettings.getDialog().dismiss();
+            UberManager.getInstance().getMainActivity().indoorCyclingService.onScanFinished();
             return null;
         }
     }
